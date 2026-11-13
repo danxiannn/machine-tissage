@@ -1,85 +1,540 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Weave Machine</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <aside>
-  <h1>Weave Machine</h1>
+<form id="ui" autocomplete="off" onsubmit="return false">
 
-  <fieldset>
-    <legend>画布 Canvas (px)</legend>
-    <div class="row">
-      <label>宽 <input id="W" type="number" value="1600" min="100" max="8000"></label>
-      <label>高 <input id="H" type="number" value="1600" min="100" max="8000"></label>
+  <!-- ============ 顶部栏：模式 / 撤销 / 导出 ============ -->
+  <div class="top">
+    <div class="head">
+      <h1>Weave Machine <small id="ver">⚠ script.js not loaded</small></h1>
+      <button id="lang" type="button">中文</button>
     </div>
-  </fieldset>
-
-  <fieldset>
-    <legend>导入 Import</legend>
-    <label class="file">图像 A <input id="fileA" type="file" accept="image/*"></label>
-    <label class="file">图像 B <input id="fileB" type="file" accept="image/*"></label>
-    <label class="file">图像 C(网点来源)<input id="fileC" type="file" accept="image/*"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>图层 Layer</legend>
-    <div class="tabs">
-      <label><input type="radio" name="layer" value="A" checked><span>A</span></label>
-      <label><input type="radio" name="layer" value="B"><span>B</span></label>
-      <label><input type="radio" name="layer" value="C"><span>C 蒙版</span></label>
+    <div id="errBox" hidden></div>
+    <div id="restoreBar" hidden>
+      <span data-zh="发现上次的编辑，要恢复吗？">Found your last session. Restore it?</span>
+      <button id="restoreYes" type="button" class="primary" data-zh="恢复">Restore</button>
+      <button id="restoreNo" type="button" data-zh="重新开始">Start fresh</button>
     </div>
-    <label>缩放 <input id="scale" type="range" min="0.2" max="4" step="0.01" value="1"></label>
-    <button id="resetPos" type="button">重置位置和缩放</button>
-    <p class="hint">在画布上拖动，移动当前图层。</p>
-  </fieldset>
+    <div class="tabs modes">
+      <label><input type="radio" name="mode" value="grid" checked><span data-zh="格子蒙版">Grid mask</span></label>
+      <label><input type="radio" name="mode" value="hand"><span data-zh="手工编织">Hand weave</span></label>
+    </div>
+    <div class="bar">
+      <button id="undo" type="button" data-zh="↶ 撤销" disabled>↶ Undo</button>
+      <button id="redo" type="button" data-zh="↷ 重做" disabled>↷ Redo</button>
+      <select id="exp" title="Export scale"><option value="1">1x</option><option value="2">2x</option><option value="4">4x</option></select>
+      <button id="save" type="button" class="primary" data-zh="下载 PNG">Download PNG</button>
+    </div>
+    <details id="histBox">
+      <summary data-zh="历史记录（点击条目可跳转）">History (click an entry to jump)</summary>
+      <ol id="histList"></ol>
+    </details>
+  </div>
 
-  <fieldset>
-    <legend>蒙版 Mask</legend>
-    <label>算法
-      <select id="algo">
-        <option value="checker">棋盘格（不需要 C）</option>
-        <option value="threshold">Threshold</option>
-        <option value="bayer4">Bayer 4×4</option>
-        <option value="bayer8">Bayer 8×8</option>
-        <option value="random">Random</option>
-        <option value="halftone">Halftone（网点大小随明暗）</option>
-      </select>
-    </label>
-    <label>形状
-      <select id="shape">
-        <option value="square">方</option>
-        <option value="circle">圆</option>
-      </select>
-    </label>
-    <label>格子大小 <input id="cell" type="range" min="4" max="200" step="1" value="40"></label>
-    <label>Threshold <input id="thr" type="range" min="0" max="1" step="0.01" value="0.5"></label>
-    <label>预模糊 C <input id="cblur" type="range" min="0" max="60" step="1" value="0"></label>
-    <label>边缘柔化 <input id="soft" type="range" min="0" max="40" step="1" value="0"></label>
-    <label class="check"><input id="inv" type="checkbox"> 反相（正 / 负型）</label>
-    <label class="check"><input id="showMask" type="checkbox"> 只看蒙版</label>
-  </fieldset>
+  <div class="groups">
 
-  <fieldset>
-    <legend>导出 Export</legend>
-    <label>倍率
-      <select id="exp">
-        <option value="1">1x</option>
-        <option value="2">2x</option>
-        <option value="4">4x</option>
-      </select>
-    </label>
-    <button id="save" type="button">下载 PNG</button>
-  </fieldset>
+  <!-- ============ 画布与来源 ============ -->
+  <details class="grp" id="g-src" open>
+    <summary data-zh="画布与来源">Canvas &amp; sources</summary>
+    <div class="gb">
+      <div class="row">
+        <label><span data-zh="宽 (px)">Width (px)</span> <input id="W" type="number" value="1600" min="100" max="8000"></label>
+        <label><span data-zh="高 (px)">Height (px)</span> <input id="H" type="number" value="1600" min="100" max="8000"></label>
+      </div>
+      <div class="file"><span data-zh="图像 A">Layer A</span>
+        <select class="src" data-k="A">
+          
+          <option value="image" data-zh="图片">Image</option>
+          <option value="solid" data-zh="纯色">Solid color</option>
+          <option value="linear" data-zh="线性渐变">Linear gradient</option>
+          <option value="radial" data-zh="径向渐变">Radial gradient</option>
+          <option value="none" data-zh="透明">Transparent</option>
+        </select>
+        <div class="pickrow" id="pickA"><button type="button" class="pick" data-for="fileA" data-zh="选择文件">Choose file</button><span class="fname" id="nameA"></span></div>
+        <div class="pickrow" id="colA" hidden><input type="color" id="c1A" value="#d94a3d"><input type="color" id="c2A" value="#f2c14e"></div>
+        <label id="angRowA" hidden><span data-zh="渐变角度">Gradient angle</span> <input id="angA" type="range" min="0" max="360" value="90"></label>
+        <input id="fileA" type="file" accept="image/*" hidden>
+      </div>
+      <div class="file"><span data-zh="图像 B">Layer B</span>
+        <select class="src" data-k="B">
+          
+          <option value="image" data-zh="图片">Image</option>
+          <option value="solid" data-zh="纯色">Solid color</option>
+          <option value="linear" data-zh="线性渐变">Linear gradient</option>
+          <option value="radial" data-zh="径向渐变">Radial gradient</option>
+          <option value="none" data-zh="透明">Transparent</option>
+        </select>
+        <div class="pickrow" id="pickB"><button type="button" class="pick" data-for="fileB" data-zh="选择文件">Choose file</button><span class="fname" id="nameB"></span></div>
+        <div class="pickrow" id="colB" hidden><input type="color" id="c1B" value="#2438c8"><input type="color" id="c2B" value="#9fd3ff"></div>
+        <label id="angRowB" hidden><span data-zh="渐变角度">Gradient angle</span> <input id="angB" type="range" min="0" max="360" value="90"></label>
+        <input id="fileB" type="file" accept="image/*" hidden>
+      </div>
+      <div class="file"><span data-zh="图像 C（图案来源）">Image C (pattern source)</span>
+        <div class="pickrow"><button type="button" class="pick" data-for="fileC" data-zh="选择文件">Choose file</button><span class="fname" id="nameC"></span></div>
+        <input id="fileC" type="file" accept="image/*" hidden>
+      </div>
+      <div class="file"><span data-zh="背景底图（可选，垫在所有东西下面）">Background (optional, sits under everything)</span>
+        <select class="src" data-k="D">
+          <option value="none" data-zh="无">None</option>
+          <option value="image" data-zh="图片">Image</option>
+          <option value="solid" data-zh="纯色">Solid color</option>
+          <option value="linear" data-zh="线性渐变">Linear gradient</option>
+          <option value="radial" data-zh="径向渐变">Radial gradient</option>
+        </select>
+        <div class="pickrow" id="pickD" hidden><button type="button" class="pick" data-for="fileD" data-zh="选择文件">Choose file</button><span class="fname" id="nameD"></span></div>
+        <div class="pickrow" id="colD" hidden><input type="color" id="c1D" value="#f4f1ea"><input type="color" id="c2D" value="#cfd8dc"></div>
+        <label id="angRowD" hidden><span data-zh="渐变角度">Gradient angle</span> <input id="angD" type="range" min="0" max="360" value="90"></label>
+        <input id="fileD" type="file" accept="image/*" hidden>
+      </div>
+    </div>
+  </details>
+
+  <!-- ============ 图层与调整 ============ -->
+  <details class="grp" id="g-layer" open>
+    <summary data-zh="图层与调整">Layer &amp; adjust</summary>
+    <div class="gb">
+      <div class="tabs">
+        <label><input type="radio" name="layer" value="A" checked><span>A</span></label>
+        <label><input type="radio" name="layer" value="B"><span>B</span></label>
+        <label><input type="radio" name="layer" value="C"><span data-zh="C 蒙版">C Mask</span></label>
+        <label><input type="radio" name="layer" value="D"><span data-zh="背景">BG</span></label>
+      </div>
+      <label><span data-zh="缩放">Scale</span> <input id="scale" type="range" min="0.2" max="4" step="0.01" value="1"></label>
+      <button id="resetPos" type="button" data-zh="重置位置和缩放">Reset position &amp; scale</button>
+      <p class="hint" data-zh="拖动画布移动当前图层。选中 C 蒙版时，拖动 / 缩放的是图案本身（预设图案）或 C 图像（抖动）。">Drag the canvas to move the selected layer. With C Mask selected you move / scale the pattern itself (presets) or the C image (dithering).</p>
+
+      <details class="sub" id="adjBox">
+        <summary data-zh="图像调整（作用于上面选中的图层）">Image adjustments (for the selected layer)</summary>
+        <button id="adjReset" type="button" class="mini" data-zh="重置这个图层的调整">Reset this layer's adjustments</button>
+      <label><span data-zh="亮度">Brightness</span> <input type="range" data-adj="bright" min="-1" max="1" step="0.01" value="0"></label>
+      <label><span data-zh="对比度">Contrast</span> <input type="range" data-adj="contrast" min="0" max="2" step="0.01" value="1"></label>
+      <label><span data-zh="饱和度">Saturation</span> <input type="range" data-adj="sat" min="0" max="2" step="0.01" value="1"></label>
+      <label><span data-zh="色阶：黑场">Levels: black point</span> <input type="range" data-adj="black" min="0" max="0.9" step="0.01" value="0"></label>
+      <label><span data-zh="色阶：白场">Levels: white point</span> <input type="range" data-adj="white" min="0.1" max="1" step="0.01" value="1"></label>
+      <label><span data-zh="色阶：灰度系数">Levels: gamma</span> <input type="range" data-adj="gamma" min="0.3" max="3" step="0.01" value="1"></label>
+      <label><span data-zh="色调分离 Posterize（0 = 关）">Posterize levels (0 = off)</span> <input type="range" data-adj="post" min="0" max="16" step="1" value="0"></label>
+      <label class="check"><input type="checkbox" data-adj="gray"> <span data-zh="黑白">Grayscale</span></label>
+      <label class="check"><input type="checkbox" data-adj="duo"> <span data-zh="双色调（暗部 → 亮部）">Duotone (shadows → highlights)</span></label>
+      <div class="pickrow"><input type="color" data-adj="d1" value="#1b2a1f"><input type="color" data-adj="d2" value="#e8e2c8"></div>
+      <span class="small" data-zh="曲线（点击添加点，拖动调整，双击删除）">Curve (click to add a point, drag to move, double-click to remove)</span>
+      <canvas id="curveCv" width="200" height="200"></canvas>
+      </details>
+    </div>
+  </details>
+
+  <!-- ============ 格子模式：蒙版 ============ -->
+  <details class="grp" id="g-mask" data-modes="grid" open>
+    <summary data-zh="蒙版（图案）">Mask (pattern)</summary>
+    <div class="gb">
+      <label><span data-zh="算法">Algorithm</span>
+        <select id="algo">
+          <optgroup label="Patterns (no C needed)" data-zh-label="图案（不需要 C）">
+            <option value="checker" data-zh="棋盘格">Checkerboard</option>
+            <option value="pat2" data-zh="棋盘格 2×2">Checkerboard 2×2</option>
+            <option value="patV" data-zh="竖条纹">Vertical stripes</option>
+            <option value="patH" data-zh="横条纹">Horizontal stripes</option>
+            <option value="patD" data-zh="斜条纹">Diagonal stripes</option>
+            <option value="patHerring" data-zh="人字纹">Herringbone</option>
+            <option value="patDiamond" data-zh="菱形">Diamonds</option>
+            <option value="patBars" data-zh="长条棋盘（1×6）">Tall bars (1×6 checker)</option>
+            <option value="patCustom" data-zh="自定义图案（自己画）">Custom tile (draw it)</option>
+          </optgroup>
+          <optgroup label="Dither (uses C)" data-zh-label="抖动（使用 C）">
+            <option value="threshold">Threshold</option>
+            <option value="floyd">Floyd–Steinberg</option>
+            <option value="atkinson">Atkinson</option>
+            <option value="jarvis">Jarvis–Judice–Ninke</option>
+            <option value="stucki">Stucki</option>
+            <option value="bayer2">Bayer 2×2</option>
+            <option value="bayer4">Bayer 4×4</option>
+            <option value="bayer8">Bayer 8×8</option>
+            <option value="clustered">Clustered 4×4</option>
+            <option value="random">Random</option>
+          </optgroup>
+        </select>
+      </label>
+      <label><span data-zh="形状">Shape</span>
+        <select id="shape">
+          <option value="square" data-zh="方">Square</option>
+          <option value="circle" data-zh="圆">Circle</option>
+        </select>
+      </label>
+      <label><span data-zh="格子大小（从中心扩散）">Cell size (grows from center)</span> <input id="cell" type="range" min="4" max="200" step="1" value="40"></label>
+      <label><span>Threshold</span> <input id="thr" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+      <label><span data-zh="预模糊 C">Blur C before dithering</span> <input id="cblur" type="range" min="0" max="60" step="1" value="0"></label>
+      <label><span data-zh="边缘柔化">Edge softness</span> <input id="soft" type="range" min="0" max="40" step="1" value="0"></label>
+      <label class="check"><input id="inv" type="checkbox"> <span data-zh="反相（正 / 负型）">Invert (positive / negative)</span></label>
+      <label class="check"><input id="showMask" type="checkbox"> <span data-zh="只看蒙版">Show mask only</span></label>
+    </div>
+  </details>
+
+  <!-- ============ 手工编织（分成几个小分组）============ -->
+  <details class="grp" id="hwPanel" data-modes="hand" hidden open>
+    <summary data-zh="手工编织：结构与图案">Hand weave: structure &amp; pattern</summary>
+    <div class="gb">
+      <p class="hint" data-zh="竖条取自 A，横条取自 B。在「图层」里拖动 A / B 可以滑动它们的内容。织法图案和格子模式共用。">Vertical strips come from A, horizontal strips from B. Drag layer A / B to slide their content. The weave patterns are shared with the grid mode.</p>
+      <label><span data-zh="结构">Structure</span>
+        <select id="hwKind">
+          <option value="weave" data-zh="编织（竖条 × 横条）">Weave (vertical × horizontal)</option>
+          <option value="strips" data-zh="只切条（单方向）">Strips only (one direction)</option>
+        </select>
+      </label>
+      <div id="hwStripBox" hidden>
+        <label><span data-zh="条的方向">Strip direction</span>
+          <select id="hwStripDir"><option value="v" data-zh="竖条">Vertical</option><option value="h" data-zh="横条">Horizontal</option></select>
+        </label>
+        <label><span data-zh="条的图像来源">Strips come from</span>
+          <select id="hwStripSrc"><option value="alt" data-zh="A 和 B 交替（一根 A 一根 B）">A and B alternating</option><option value="A" data-zh="只用 A">A only</option><option value="B" data-zh="只用 B">B only</option></select>
+        </label>
+        <p class="hint" data-zh="条的数量用下面的「竖条数量」或「横条数量」（取决于方向）。">The number of strips is the "Vertical strips" or "Horizontal strips" field below, depending on the direction.</p>
+      </div>
+      <div id="hwWeaveBox">
+        <label><span data-zh="织法（上下压叠）">Weave (over / under)</span>
+          <select id="hwDraft">
+            <option value="checker" data-zh="平纹（一上一下）">Plain (over-under)</option>
+            <option value="pat2" data-zh="方平 2×2">Basket 2×2</option>
+            <option value="patD" data-zh="斜纹">Twill</option>
+            <option value="patHerring" data-zh="人字纹">Herringbone</option>
+            <option value="patDiamond" data-zh="菱形">Diamonds</option>
+            <option value="patBars" data-zh="长条棋盘（1×6）">Tall bars (1×6 checker)</option>
+            <option value="patCustom" data-zh="自定义图案（自己画）">Custom tile (draw it)</option>
+            <option value="random" data-zh="随机">Random</option>
+            <option value="imageC" data-zh="用图像 C 决定（位图织法）">From image C (bitmap)</option>
+          </select>
+        </label>
+        <div id="hwCBox" hidden>
+          <label><span data-zh="C 的转换方式">Convert C with</span>
+            <select id="hwCAlgo">
+              <option value="threshold">Threshold</option>
+              <option value="floyd">Floyd–Steinberg</option>
+              <option value="atkinson">Atkinson</option>
+              <option value="bayer4">Bayer 4×4</option>
+              <option value="random">Random</option>
+            </select>
+          </label>
+          <label><span>Threshold</span> <input id="hwCThr" type="range" min="0" max="1" step="0.01" value="0.5"></label>
+          <label class="check"><input id="hwCInv" type="checkbox"> <span data-zh="反相（竖条 / 横条互换）">Invert (swap A / B on top)</span></label>
+          <p class="hint" data-zh="先导入图像 C。每个交叉点对应 C 的一个像素：亮 = 竖条（A）压上，暗 = 横条（B）压上。想要更细的图案，就增加条的数量。选中「C 蒙版」图层可以拖动 / 缩放 C。">Import image C first. Each crossing is one pixel of C: bright = A on top, dark = B on top. Use more strips for finer detail. Select layer C to drag / scale it.</p>
+        </div>
+      </div>
+      <div class="row">
+        <label><span data-zh="竖条数量">Vertical strips</span> <input id="hwNW" type="number" min="3" max="60" value="16"></label>
+        <label><span data-zh="横条数量">Horizontal strips</span> <input id="hwNH" type="number" min="3" max="60" value="18"></label>
+      </div>
+      <label><span data-zh="风格">Style</span>
+        <select id="hwStyle">
+          <option value="flat" data-zh="平面（无投影、无颗粒）">Flat (no shadows, no grain)</option>
+          <option value="real" data-zh="拟真（投影、颗粒、明暗差异）">Realistic (shadows, grain, tone)</option>
+        </select>
+      </label>
+      <button id="hwTidy" type="button" data-zh="✨ 整齐预设（关掉所有随机性）">✨ Tidy preset (turn all randomness off)</button>
+      <label class="check"><input id="hwShowMask" type="checkbox"> <span data-zh="只看蒙版（黑 = A 压上，灰 = B）">Show mask only (black = A on top, gray = B)</span></label>
+    </div>
+  </details>
+
+  <details class="grp" id="hwShape" data-modes="hand" hidden open>
+    <summary data-zh="条的形状与随机性">Strip shape &amp; randomness</summary>
+    <div class="gb">
+      <label><span data-zh="宽度不均">Width variation</span> <input id="hwVar" type="range" min="0" max="0.8" step="0.01" value="0.35"></label>
+      <label><span data-zh="条间缝隙 (px)">Gap between strips (px)</span> <input id="hwGap" type="range" min="0" max="20" step="0.5" value="2"></label>
+      <label><span data-zh="边距（主体的 %）">Margin (% of the body)</span> <input id="hwMargin" type="range" min="0" max="25" step="0.5" value="12"></label>
+
+      <div class="subhead"><span data-zh="整体歪斜 / 弯曲（所有条一起，保持平行）">Overall tilt / wave (all strips together, stay parallel)</span></div>
+      <label><span data-zh="整体歪斜（°，整块布一起转）">Overall tilt (°, the whole cloth rotates)</span> <input id="hwGTilt" type="range" min="-10" max="10" step="0.1" value="0"></label>
+      <label><span data-zh="整体波浪幅度 (px)">Overall wave amplitude (px)</span> <input id="hwGWave" type="range" min="0" max="120" step="0.5" value="0"></label>
+      <label><span data-zh="整体波浪波长 (px)">Overall wavelength (px)</span> <input id="hwGWaveLen" type="range" min="100" max="3000" step="10" value="700"></label>
+
+      <div class="subhead"><span data-zh="每根条各自的随机（相邻的条不会互相穿过）">Per-strip randomness (neighbours never cross)</span></div>
+      <label><span data-zh="每根条的弯曲抖动 (px)">Per-strip wobble (px)</span> <input id="hwWob" type="range" min="0" max="20" step="0.5" value="4"></label>
+      <label><span data-zh="每根条的歪斜 (°)">Per-strip tilt (°)</span> <input id="hwTilt" type="range" min="0" max="6" step="0.1" value="0.7"></label>
+      <label><span data-zh="条头参差程度（全局）">Ragged ends amount (global)</span> <input id="hwRag" type="range" min="0" max="1" step="0.01" value="0.85"></label>
+      <label><span data-zh="竖条：哪一端参差">Vertical strips: ragged at</span>
+        <select id="hwRagV"><option value="none" data-zh="不参差">None</option><option value="start" data-zh="上端">Top</option><option value="end" data-zh="下端">Bottom</option><option value="both" data-zh="两端（默认）" selected>Both ends (default)</option><option value="ext" data-zh="和延伸同一端">Same end as the overhang</option></select>
+      </label>
+      <label><span data-zh="横条：哪一端参差">Horizontal strips: ragged at</span>
+        <select id="hwRagH"><option value="none" data-zh="不参差">None</option><option value="start" data-zh="左端">Left</option><option value="end" data-zh="右端">Right</option><option value="both" data-zh="两端（默认）" selected>Both ends (default)</option><option value="ext" data-zh="和延伸同一端">Same end as the overhang</option></select>
+      </label>
+      <div class="row colorrow">
+        <label><span data-zh="随机种子">Seed</span> <input id="hwSeed" type="number" min="1" max="99999" value="7"></label>
+        <button id="hwShuffle" type="button" data-zh="🎲 重新随机（条的形状）">🎲 Reshuffle (strip shapes)</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="grp" id="hwColorsPanel" data-modes="hand" hidden>
+    <summary data-zh="条的内容与颜色">Strip content &amp; colors</summary>
+    <div class="gb">
+      <label><span data-zh="每根条的内容">What each strip shows</span>
+        <select id="hwFill">
+          <option value="image" data-zh="图像（A / B）">Images (A / B)</option>
+          <option value="avg" data-zh="纯色：取这根条下面那块图像的平均色">Solid: average color of the image under each strip</option>
+          <option value="palette" data-zh="纯色：从图像提取的调色板里分配">Solid: assigned from a palette taken from the images</option>
+          <option value="custom" data-zh="纯色：用我粘贴的颜色列表">Solid: from the color list I paste</option>
+        </select>
+      </label>
+      <div id="hwColorBox" hidden>
+        <label id="hwPalRow" hidden><span data-zh="调色板颜色数">Palette size</span> <input id="hwPalK" type="range" min="2" max="16" step="1" value="6"></label>
+        <div id="hwPalWrap" hidden>
+          <label><span data-zh="粘贴颜色列表（#xxxxxx，用空格、逗号或换行隔开）">Paste a color list (#xxxxxx, separated by spaces, commas or new lines)</span>
+            <textarea id="hwPalText" rows="3" placeholder="#f26b21 #1f77b4 #2ca02c"></textarea></label>
+        </div>
+        <p class="hint" data-zh="选中条：点击下面的色块，或用画布左边工具栏的「选色」工具点画布上的条（Shift = 多选，Alt + 点击 = 选中压在下面的那根）。换色用画布上方的取色面板。">Select strips: click a swatch below, or use the "Color" tool in the toolbar left of the canvas and click strips on the canvas (Shift = several, Alt + click = the strip underneath). Change the color with the color field above the canvas.</p>
+        <span class="small" data-zh="竖条">Vertical strips</span>
+        <div class="swatches" id="hwSwV"></div>
+        <span class="small" data-zh="横条">Horizontal strips</span>
+        <div class="swatches" id="hwSwH"></div>
+        <div class="row">
+          <button id="hwSelV" type="button" data-zh="全选竖条">All vertical</button>
+          <button id="hwSelH" type="button" data-zh="全选横条">All horizontal</button>
+          <button id="hwSelNone" type="button" data-zh="取消选择">Deselect</button>
+        </div>
+        <button id="hwColorsReset" type="button" data-zh="清除所有手动换的颜色">Clear all manual colors</button>
+      </div>
+    </div>
+  </details>
+
+  <details class="grp" id="hwOverhang" data-modes="hand" hidden>
+    <summary data-zh="延伸出去的一段与画布大小">Overhang &amp; canvas size</summary>
+    <div class="gb">
+      <label class="check"><input id="hwGrow" type="checkbox" checked> <span data-zh="画布跟着延伸变大（宽 / 高 = 编织主体的大小）">Grow the canvas to fit the overhang (Width / Height = the woven body)</span></label>
+      <p class="small" id="hwSizeInfo"></p>
+      <label><span data-zh="竖条：哪一端延伸">Vertical strips: which end</span>
+        <select id="hwExtVSide"><option value="none" data-zh="不延伸">None</option><option value="start" data-zh="上端">Top</option><option value="end" data-zh="下端">Bottom</option><option value="both" data-zh="两端">Both ends</option></select>
+      </label>
+      <label><span data-zh="竖条：延伸长度（占画布高度的 %）">Vertical: overhang length (% of the canvas height)</span> <input id="hwExtVLen" type="range" min="0" max="100" step="0.5" value="0"></label>
+      <label><span data-zh="竖条：长度的随机程度（0 = 全部一样长）">Vertical: length randomness (0 = all equal)</span> <input id="hwExtVRand" type="range" min="0" max="1" step="0.01" value="0"></label>
+      <label><span data-zh="横条：哪一端延伸">Horizontal strips: which end</span>
+        <select id="hwExtHSide"><option value="none" data-zh="不延伸">None</option><option value="start" data-zh="左端">Left</option><option value="end" data-zh="右端">Right</option><option value="both" data-zh="两端">Both ends</option></select>
+      </label>
+      <label><span data-zh="横条：延伸长度（占画布宽度的 %）">Horizontal: overhang length (% of the canvas width)</span> <input id="hwExtHLen" type="range" min="0" max="100" step="0.5" value="0"></label>
+      <label><span data-zh="横条：长度的随机程度（0 = 全部一样长）">Horizontal: length randomness (0 = all equal)</span> <input id="hwExtHRand" type="range" min="0" max="1" step="0.01" value="0"></label>
+    </div>
+  </details>
+
+  <details class="grp" id="hwShuf" data-modes="hand" hidden>
+    <summary data-zh="打乱与抽拉">Shuffle &amp; pull</summary>
+    <div class="gb">
+      <label><span data-zh="条上图像滑动的概率">Chance a strip's image slides</span> <input id="hsP" type="range" min="0" max="1" step="0.01" value="0.25"></label>
+      <label><span data-zh="滑动最大距离 (px)">Max slide (px)</span> <input id="hsAmt" type="range" min="0" max="400" step="1" value="60"></label>
+      <label><span data-zh="条之间互换图像的概率">Chance strips swap images</span> <input id="hsSwap" type="range" min="0" max="1" step="0.01" value="0.1"></label>
+      <div class="row colorrow">
+        <label><span data-zh="打乱种子">Shuffle seed</span> <input id="hsSeed" type="number" min="1" max="99999" value="3"></label>
+        <button id="hsRoll" type="button" data-zh="🎲 重新打乱">🎲 Reroll</button>
+      </div>
+      <label class="check"><input id="hwFollow" type="checkbox" checked> <span data-zh="抽拉时图像跟着条一起移动">Image follows the strip when pulled</span></label>
+      <button id="hwPullReset" type="button" data-zh="清除所有抽拉">Reset all pulls</button>
+      <p class="hint" data-zh="抽拉：用画布左边工具栏的「抽拉」工具，竖着拖竖条、横着拖横条。">Pull: use the "Pull" tool in the toolbar left of the canvas; drag vertically to pull a vertical strip, horizontally for a horizontal strip.</p>
+    </div>
+  </details>
+
+  <details class="grp" id="hwLook" data-modes="hand" hidden>
+    <summary data-zh="底纸与质感">Paper &amp; look</summary>
+    <div class="gb">
+      <div class="row colorrow">
+        <label><span data-zh="底纸颜色">Paper color</span> <input id="hwPaper" type="color" value="#f4f1ea"></label>
+      </div>
+      <div id="hwRealBox" hidden>
+        <label><span data-zh="每条明暗差异">Tone variation</span> <input id="hwTone" type="range" min="0" max="0.25" step="0.005" value="0.07"></label>
+        <label><span data-zh="投影强度">Shadow strength</span> <input id="hwShadow" type="range" min="0" max="1" step="0.01" value="0.55"></label>
+        <label><span data-zh="投影柔和度 (px)">Shadow softness (px)</span> <input id="hwSoft" type="range" min="1" max="30" step="0.5" value="6"></label>
+        <label><span data-zh="纸张颗粒">Paper grain</span> <input id="hwGrain" type="range" min="0" max="1" step="0.01" value="0.35"></label>
+      </div>
+      <p class="hint" data-zh="投影、颗粒、明暗差异只有在「风格」选了「拟真」时才会出现。">Shadows, grain and tone variation only appear when "Style" is set to Realistic.</p>
+    </div>
+  </details>
+
+  <details class="grp" id="hwOutside" data-modes="hand" hidden>
+    <summary data-zh="区域之外（切缝）">Outside the region (slits)</summary>
+    <div class="gb">
+      <div class="tabs">
+        <label><input type="radio" name="slit" value="keep" checked><span data-zh="保留切缝">Keep slits</span></label>
+        <label><input type="radio" name="slit" value="none"><span data-zh="无切缝">No slits</span></label>
+      </div>
+      <label><span data-zh="切缝方向">Slit direction</span>
+        <select id="hwSlitDir">
+          <option value="h" data-zh="横向（切横条）">Horizontal</option>
+          <option value="v" data-zh="纵向（切竖条）">Vertical</option>
+          <option value="both" data-zh="两个方向">Both</option>
+        </select>
+      </label>
+      <label><span data-zh="切缝粗细 (px)">Slit width (px)</span> <input id="hwSlitW" type="range" min="0.5" max="8" step="0.1" value="1.4"></label>
+      <p class="hint" data-zh="画出「蒙版区域」后，编织只出现在区域里；区域之外显示完整的图（在「蒙版区域」里选 A、B 或背景）。">Draw a mask region and the weave only appears inside it; outside shows one whole image (choose A, B or the background in "Mask region").</p>
+    </div>
+  </details>
+
+  <!-- ============ 自定义图案编辑器（两个模式共用）============ -->
+  <details class="grp" id="g-tile" hidden open>
+    <summary data-zh="自定义图案">Custom tile</summary>
+    <div class="gb" id="tileBox">
+      <div class="row tilesz">
+        <label><span data-zh="图案宽">Tile W</span> <input id="tileW" type="number" min="2" max="24" value="8"></label>
+        <label><span data-zh="图案高">Tile H</span> <input id="tileH" type="number" min="2" max="24" value="8"></label>
+      </div>
+      <label class="check"><input id="tileRepeat" type="checkbox" checked> <span data-zh="重复铺满画布（取消 = 只出现一个图案）">Repeat across canvas (off = single motif)</span></label>
+      <canvas id="tileCv"></canvas>
+      <div class="row">
+        <button id="tileClear" type="button" data-zh="清空">Clear</button>
+        <button id="tileInv" type="button" data-zh="反相">Invert</button>
+      </div>
+      <p class="hint" data-zh="点击或拖动格子来画。格子模式里它决定每格显示 A 还是 B；手工编织里它决定每个交叉点谁压在上面。">Click or drag cells to draw. In grid mode it decides A or B per cell; in hand weave it decides which strip is on top at each crossing.</p>
+    </div>
+  </details>
+
+  <!-- ============ 几何：无 / 变形 / 打乱（格子模式）============ -->
+  <details class="grp" id="g-geo" data-modes="grid">
+    <summary data-zh="几何（变形 / 打乱）">Geometry (warp / shuffle)</summary>
+    <div class="gb">
+      <div class="tabs geo3">
+        <label><input type="radio" name="geo" value="off" checked><span data-zh="关">Off</span></label>
+        <label><input type="radio" name="geo" value="warp"><span data-zh="变形 Warp">Warp</span></label>
+        <label><input type="radio" name="geo" value="shuffle"><span data-zh="打乱 Shuffle">Shuffle</span></label>
+      </div>
+      <p class="hint" data-zh="变形和打乱不能同时使用，选一个即可。">Warp and Shuffle can't be combined: pick one.</p>
+
+      <div id="geoWarp" hidden>
+        <label><span data-zh="预设">Preset</span>
+          <select id="warpPreset">
+            <option value="" data-zh="自定义">Custom</option>
+            <option value="none" data-zh="无">None</option>
+            <option value="squeeze" data-zh="挤压（行列宽窄变化）">Squeeze (varying widths)</option>
+            <option value="wave" data-zh="波浪">Wave</option>
+            <option value="ripple" data-zh="涟漪">Ripple</option>
+          </select>
+        </label>
+        <label><span data-zh="列宽变化">Column width variation</span> <input id="wColW" type="range" min="0" max="0.8" step="0.01" value="0"></label>
+        <label><span data-zh="行高变化">Row height variation</span> <input id="wRowH" type="range" min="0" max="0.8" step="0.01" value="0"></label>
+        <label><span data-zh="变化周期（格）">Variation period (cells)</span> <input id="wPeriod" type="range" min="4" max="40" step="1" value="14"></label>
+        <label><span data-zh="横向波动">Wave horizontal</span> <input id="wWx" type="range" min="0" max="4" step="0.05" value="0"></label>
+        <label><span data-zh="纵向波动">Wave vertical</span> <input id="wWy" type="range" min="0" max="4" step="0.05" value="0"></label>
+        <label><span data-zh="波长（格）">Wavelength (cells)</span> <input id="wLen" type="range" min="4" max="60" step="1" value="16"></label>
+      </div>
+
+      <div id="geoShuffle" hidden>
+        <div class="subhead"><span data-zh="随机打乱（只作用在 A、B 的图像上，蒙版不会被打乱）">Random shuffle (applied to the A and B images; the mask is never shuffled)</span></div>
+        <label class="check"><input id="shSame" type="checkbox"> <span data-zh="A 和 B 用同一种打乱">A and B use the same shuffle</span></label>
+        <label><span data-zh="手动修改作用于">Manual edits apply to</span>
+          <select id="shApplyTo"><option value="both" data-zh="A 和 B">A and B</option><option value="A" data-zh="只有 A">A only</option><option value="B" data-zh="只有 B">B only</option></select>
+        </label>
+        <label><span data-zh="整行滑动的概率">Chance a row slides</span> <input id="shRowP" type="range" min="0" max="1" step="0.01" value="0.3"></label>
+        <label><span data-zh="整列滑动的概率">Chance a column slides</span> <input id="shColP" type="range" min="0" max="1" step="0.01" value="0.3"></label>
+        <label><span data-zh="最大滑动距离（格）">Max slide (cells)</span> <input id="shMax" type="range" min="0" max="8" step="0.1" value="2"></label>
+        <label><span data-zh="行 / 列互换的概率">Chance rows / columns swap</span> <input id="shSwapRC" type="range" min="0" max="1" step="0.01" value="0.15"></label>
+        <label><span data-zh="单格旋转 / 翻转的概率">Chance a cell rotates / flips</span> <input id="shRot" type="range" min="0" max="1" step="0.01" value="0.15"></label>
+        <label><span data-zh="相邻格互换的概率">Chance cells swap with a neighbour</span> <input id="shSwapC" type="range" min="0" max="1" step="0.01" value="0.15"></label>
+        <div class="row colorrow">
+          <label><span data-zh="随机种子">Seed</span> <input id="shSeed" type="number" min="1" max="99999" value="5"></label>
+          <button id="shRoll" type="button" data-zh="🎲 重新随机">🎲 Reroll</button>
+        </div>
+
+        <div class="subhead"><span data-zh="手动打乱">Manual shuffle</span></div>
+        <p class="hint" data-zh="手动打乱：用画布左边工具栏的「打乱」工具。选好对象（格子 / 整行 / 整列）后，在画布上点选或拖动，画布上方有旋转、翻转按钮。手动修改叠加在随机结果上，重新随机不会丢。">Manual shuffle: use the "Shuffle" tool in the toolbar left of the canvas. Choose a target (cell / row / column) above the canvas, then click or drag on the canvas. Manual edits sit on top of the random result.</p>
+      </div>
+    </div>
+  </details>
+
+  <!-- ============ 蒙版区域（两个模式共用）============ -->
+  <details class="grp" id="g-region" open>
+    <summary data-zh="蒙版区域">Mask region</summary>
+    <div class="gb">
+      <p class="hint" data-zh="用画布左边工具栏里的「选择 / 画笔 / 矩形 / 圆形 / 多边形」画出区域。">Draw the region with the Select / Brush / Rect / Ellipse / Polygon tools in the toolbar left of the canvas.</p>
+      <label class="check"><input id="limit" type="checkbox"> <span data-zh="只在区域内使用蒙版 / 编织">Limit the mask / weave to the region</span></label>
+      <label><span data-zh="区域之外显示">Outside the region show</span>
+        <select id="outside"><option value="B" data-zh="B">B</option><option value="A" data-zh="A">A</option><option value="D" data-zh="背景">Background</option></select>
+      </label>
+      <div class="row">
+        <button id="regClear" type="button" data-zh="清空区域">Clear all</button>
+        <button id="regFill" type="button" data-zh="填满区域">Fill all</button>
+      </div>
+      <p class="status" id="regStatus"></p>
+    </div>
+  </details>
+
+  </div><!-- /groups -->
+</form>
 </aside>
 
 <main>
-  <canvas id="cv"></canvas>
+  <div id="toolbar">
+    <button type="button" class="tbtn" data-tool="none" title="Move layer (drag the canvas)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span data-zh="移动图层">Move</span></button>
+    <button type="button" class="tbtn" data-tool="select" title="Select / move shapes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3l12 8-5.5 1.5L10 18z"/></svg><span data-zh="选择">Select</span></button>
+    <button type="button" class="tbtn" data-tool="brush" title="Brush"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1-4 11-11 3 3L8 19zM14 7l3 3"/></svg><span data-zh="画笔">Brush</span></button>
+    <button type="button" class="tbtn" data-tool="rect" title="Rectangle"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12"/></svg><span data-zh="矩形">Rect</span></button>
+    <button type="button" class="tbtn" data-tool="ellipse" title="Ellipse"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg><span data-zh="圆形">Ellipse</span></button>
+    <button type="button" class="tbtn" data-tool="poly" title="Polygon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l8 6-3 9H7l-3-9z"/></svg><span data-zh="多边形">Polygon</span></button>
+    <button type="button" class="tbtn" data-tool="shuffle" data-need="grid-shuffle" hidden title="Shuffle cells / rows / columns"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h4l8 10h4M4 17h4l3-4M13 11l3-4h4M18 5l2 2-2 2M18 15l2 2-2 2"/></svg><span data-zh="打乱">Shuffle</span></button>
+    <button type="button" class="tbtn" data-tool="pull" data-need="hand" hidden title="Pull strips"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M9 6l3-3 3 3M9 18l3 3 3-3"/></svg><span data-zh="抽拉">Pull</span></button>
+    <button type="button" class="tbtn" data-tool="recolor" data-need="hand" hidden title="Pick strips and recolor them"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 4 6 7 6 10a6 6 0 0 1-12 0c0-3 3-6 6-10z"/></svg><span data-zh="选色">Color</span></button>
+  </div>
+  <div class="stage">
+    <div id="toolOpts" hidden>
+      <div class="opt" data-tools="select brush rect ellipse poly">
+        <div class="tabs tools">
+          <label><input type="radio" name="act" value="add" checked><span data-zh="添加">Add</span></label>
+          <label><input type="radio" name="act" value="sub"><span data-zh="擦除">Subtract</span></label>
+        </div>
+        <label class="check" id="snapWrap"><input id="snap" type="checkbox" checked> <span data-zh="对齐格子">Snap to grid</span></label>
+        <label class="optbrush" id="brushWrap"><span data-zh="笔刷大小">Brush size</span> <input id="brush" type="range" min="5" max="400" value="80"></label>
+        <button id="regDel" type="button" data-zh="删除所选">Delete selected</button>
+      </div>
+      <div class="opt" data-tools="shuffle">
+        <div class="tabs tools">
+          <label><input type="radio" name="shtarget" value="cell" checked><span data-zh="格子">Cell</span></label>
+          <label><input type="radio" name="shtarget" value="row"><span data-zh="整行">Row</span></label>
+          <label><input type="radio" name="shtarget" value="col"><span data-zh="整列">Column</span></label>
+        </div>
+        <button id="shRotL" type="button" title="Rotate left">↺</button>
+        <button id="shRotR" type="button" title="Rotate right">↻</button>
+        <button id="shFlipH" type="button" title="Flip horizontally">⇋</button>
+        <button id="shFlipV" type="button" title="Flip vertically">⇅</button>
+        <button id="shClear" type="button" data-zh="清除手动修改">Clear manual edits</button>
+      </div>
+      <div class="opt" data-tools="pull">
+        <span class="hintline" data-zh="竖着拖 = 拉竖条，横着拖 = 拉横条（只切条时只有一个方向）。">Drag vertically to pull a vertical strip, horizontally for a horizontal strip.</span>
+      </div>
+      <div class="opt" data-tools="recolor">
+        <span class="optlabel" data-zh="给选中的条换色">Color of the selected strips</span>
+        <input id="hwRecolor" type="color" value="#ff5a1f">
+        <button id="hwRandColor" type="button" data-zh="随机色">Random</button>
+        <button id="hwPalColor" type="button" data-zh="取调色板色">Palette</button>
+        <button id="hwClearSel" type="button" data-zh="还原所选">Reset selected</button>
+        <span class="hintline" data-zh="点画布上的条选中（Shift 多选，Alt 选下面那根）。">Click strips on the canvas (Shift = several, Alt = the one underneath).</span>
+      </div>
+      <button id="toolDone" type="button" data-zh="✓ 完成">✓ Done</button>
+    </div>
+    <div class="canvaswrap"><canvas id="cv"></canvas></div>
+  </div>
 </main>
 
-<script src="sketch.js"></script>
+<script src="script.js"></script>
+<script src="adjust.js"></script>
+<script src="shuffle.js"></script>
+<script src="handweave.js"></script>
+<script src="colors.js"></script>
+<script src="colorpicker.js"></script>
+<script src="session.js"></script>
+<script src="ui.js"></script>
+<script src="main.js"></script>
+<script>
+// 检查所有脚本文件是不是都加载到了：缺哪个就在左上角的红条里直接告诉你
+window.addEventListener('load', function () {
+  var need = { 'script.js': 'compose', 'adjust.js': 'adjustLayer', 'shuffle.js': 'shuffleGrid', 'handweave.js': 'composeHand',
+               'colors.js': 'assignFills', 'colorpicker.js': 'cfInit', 'session.js': 'sessionCheck', 'ui.js': 'setGeo', 'main.js': '__mainLoaded' };
+  var miss = [];
+  for (var f in need) if (typeof window[need[f]] === 'undefined') miss.push(f);
+  var b = document.getElementById('errBox');
+  if (miss.length && b) {
+    b.dataset.missing = '缺少文件 / Missing: ' + miss.join(', ') + ' —— 请确认 index.html、style.css 和这 9 个 .js 文件都在同一个文件夹里';
+    b.hidden = false; b.textContent = '⚠ ' + b.dataset.missing;
+  }
+});
+</script>
 </body>
 </html>

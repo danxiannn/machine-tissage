@@ -2,6 +2,7 @@
 applyLang();
 // 画布旁的工具选项不在表单里，浏览器刷新时可能会“记住”上次的选择，这里统一回到默认值
 document.querySelector('input[name=act][value=add]').checked = true;
+document.querySelector('input[name=layer][value=A]').checked = true;      // 图层选择在表单外面，刷新时浏览器可能记住上次的选择
 document.querySelector('input[name=shtarget][value=cell]').checked = true;
 $('snap').checked = true; $('brush').value = 80;
 cfInit();

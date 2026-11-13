@@ -14,7 +14,7 @@ function readHW() {
     slit: document.querySelector('input[name=slit]:checked').value, slitW: v('hwSlitW'), slitDir: $('hwSlitDir').value,
     outside: $('outside').value,
     fill: $('hwFill').value, palK: Math.round(v('hwPalK')), palText: $('hwPalText').value,
-    gTilt: v('hwGTilt'), gWave: v('hwGWave'), gWaveLen: Math.max(50, v('hwGWaveLen')), ragV: $('hwRagV').value, ragH: $('hwRagH').value, gapIrr: v('hwGapIrr'), randStyle: $('hwRandStyle').value,
+    gTilt: v('hwGTilt'), gWave: v('hwGWave'), gWaveLen: Math.max(50, v('hwGWaveLen')), ragV: $('hwRagV').value, ragH: $('hwRagH').value, gapIrr: v('hwGapIrr'), randStyle: $('hwRandStyle').value, join: $('hwJoin').checked,
     extV: { side: $('hwExtVSide').value, len: v('hwExtVLen') / 100 * (+$('H').value), rand: v('hwExtVRand') },   // 延伸长度 = 主体高度的 %
     extH: { side: $('hwExtHSide').value, len: v('hwExtHLen') / 100 * (+$('W').value), rand: v('hwExtHRand') },   // 延伸长度 = 主体宽度的 %
     rect: handRect(),
@@ -131,13 +131,56 @@ function sampleC(P, W, H) {
   return res;
 }
 
+// ---- “连成整块”用到的辅助函数 ----
+// 一根条的两条长边：a = 靠前（左 / 上）的那条，b = 靠后（右 / 下）的那条，都按沿条方向从小到大排列
+function edgePts(st) { const n = st.pts.length / 2; return { a: st.pts.slice(0, n), b: st.pts.slice(n).reverse() }; }
+// 两根相邻的条之间的缝所在的区域（两边各多盖进条里 1.2px，把切边线也盖住）
+// 把从 first 到 last 的一排相邻的条当成一整条：前一根的前沿 + 后一根的后沿
+function mergeStrips(first, last) {
+  const e1 = edgePts(first), e2 = edgePts(last);
+  return { pts: e1.a.concat(e2.b.slice().reverse()) };
+}
+function bridgePoly(br) {
+  const e1 = edgePts(br.S1), e2 = edgePts(br.S2), vert = br.vertical;
+  const sh = (pts, du) => pts.map(p => vert ? [p[0] + du, p[1]] : [p[0], p[1] + du]);
+  const avg = pts => pts.reduce((s, p) => s + (vert ? p[0] : p[1]), 0) / pts.length;
+  br.umid = (avg(e1.b) + avg(e2.a)) / 2;                        // 缝的中线：上半用前一根的内容，下半用后一根的
+  return sh(e1.b, -1.2).concat(sh(e2.a, 1.2).reverse());
+}
+function fillBridgeMask(c, br) {                                  // 在蒙版里把连接处涂上（限制在被压住的那根条的宽度内）
+  const kk = c._k || 1;
+  c.save();
+  c.setTransform(kk, 0, 0, kk, 0, 0);
+  c.beginPath(); br.clip.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); c.clip();
+  c.beginPath(); br.poly.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath();
+  c.fillStyle = '#000'; c.fill();
+  c.restore();
+}
+function drawBridge(c, br, src) {                                  // 在图层里画上连接处的内容（图像或纯色）
+  const k = c._k || 1;
+  for (let half = 0; half < 2; half++) {
+    const S = half === 0 ? br.S1 : br.S2, big = 1e6;
+    c.save();
+    c.setTransform(k, 0, 0, k, 0, 0);
+    c.beginPath(); br.clip.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); c.clip();
+    c.beginPath(); br.poly.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.closePath(); c.clip();
+    c.beginPath();
+    if (br.vertical) c.rect(half === 0 ? -big : br.umid, -big, half === 0 ? br.umid + big : big, 2 * big);
+    else c.rect(-big, half === 0 ? -big : br.umid, 2 * big, half === 0 ? br.umid + big : big);
+    c.clip();
+    if (S.fill) { c.fillStyle = S.fill; c.fillRect(-big, -big, 2 * big, 2 * big); }
+    else { c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(src, S.off[0] * k, S.off[1] * k); }
+    c.restore();
+  }
+}
+
 function composeHand(s) {
   const W = CW(), H = CH();
   const k = Math.min(s, Math.sqrt(25e6 / (W * H)));          // 内存保护：太大的导出自动降到约 2500 万像素
   const w = Math.round(W * k), h = Math.round(H * k);
   const P = readHW(), onlyStrips = P.kind === 'strips', vert = P.stripDir === 'v';
   const newCanvas = () => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
-  const base = c => { c.setTransform(k, 0, 0, k, 0, 0); return c; };
+  const base = c => { c.setTransform(k, 0, 0, k, 0, 0); c._k = k; return c; };
 
   let warp, weft;                                                  // warp = 竖条，weft = 横条
   if (onlyStrips) {                                                // 只切条：只有一个方向
@@ -155,7 +198,7 @@ function composeHand(s) {
 
 
   // ---- 编织：每个交叉点谁在上面 ----
-  let mWarpAll = null, mWarp = null, mCross = null, topArr = null;
+  let mWarpAll = null, mWarp = null, mCross = null, topArr = null, bridges = null;
   if (!onlyStrips) {
     const useC = P.draft === 'imageC' && layers.C.img;           // 没导入 C 时先用平纹代替
     const cTop = useC ? sampleC(P, W, H) : null;
@@ -175,9 +218,41 @@ function composeHand(s) {
       if (warpTop) continue;
       cc.save(); polyPath(cc, weft[j].pts); cc.clip(); polyPath(cc, warp[i].pts); cc.fill(); cc.restore();
     }
+    // “连成整块”：同一根条在相邻两个交叉点都压在上面时，把它们之间的缝补上（块中间就没有细横线 / 细竖线了）
+    if (P.join) {
+      bridges = [];
+      // 竖着：相邻两根横条（j、j+1）在连续的几根竖条上都是横条压上 → 补上这几根竖条（包括它们之间的竖缝）范围内的横缝
+      for (let j = 0; j < P.nH - 1; j++) {
+        let i = 0;
+        while (i < P.nW) {
+          const wt = ii => !topArr[j * P.nW + ii] && !topArr[(j + 1) * P.nW + ii];
+          if (!wt(i)) { i++; continue; }
+          let i1 = i; while (i1 + 1 < P.nW && wt(i1 + 1)) i1++;
+          bridges.push({ kind: 'w', S1: weft[j], S2: weft[j + 1], clip: mergeStrips(warp[i], warp[i1]), vertical: false });
+          i = i1 + 1;
+        }
+      }
+      // 横着：相邻两根竖条（i、i+1）在连续的几根横条上都是竖条压上 → 补上它们之间的竖缝
+      for (let i = 0; i < P.nW - 1; i++) {
+        let j = 0;
+        while (j < P.nH) {
+          const vt = jj => topArr[jj * P.nW + i] && topArr[jj * P.nW + i + 1];
+          if (!vt(j)) { j++; continue; }
+          let j1 = j; while (j1 + 1 < P.nH && vt(j1 + 1)) j1++;
+          bridges.push({ kind: 'v', S1: warp[i], S2: warp[i + 1], clip: mergeStrips(weft[j], weft[j1]), vertical: true });
+          j = j1 + 1;
+        }
+      }
+      for (const b of bridges) b.poly = bridgePoly(b);
+      for (const b of bridges) if (b.kind === 'w') fillBridgeMask(cc, b);              // 横条压住的连接处：并入“横条压上”的蒙版
+    }
     mWarp = newCanvas();                                          // 竖条可见部分 = 竖条 − 横条压住的交叉区域
     const mv = mWarp.getContext('2d');
     mv.drawImage(mWarpAll, 0, 0); mv.globalCompositeOperation = 'destination-out'; mv.drawImage(mCross, 0, 0);
+    if (bridges) {
+      mv.globalCompositeOperation = 'source-over'; mv._k = k;
+      for (const b of bridges) if (b.kind === 'v') { fillBridgeMask(mv, b); fillBridgeMask(ca, b); }   // 竖条压住的连接处：并入“竖条可见”的蒙版
+    }
   }
 
   hwGeom.top = topArr; hwGeom.nW = P.nW;                              // 点选条时判断“压在上面的是哪一根”
@@ -202,6 +277,7 @@ function composeHand(s) {
   paintSource(srcB.getContext('2d'), 'B', W, H, k);
   const stripLayer = (strips, src) => {
     const L = newCanvas(), c = L.getContext('2d');
+    c._k = k;
     for (const st of strips) {
       c.save();
       base(c); polyPath(c, st.pts);
@@ -249,6 +325,11 @@ function composeHand(s) {
     o.drawImage(L, 0, 0);
   } else {
     const Lv = stripLayer(warp, srcA), Lw = stripLayer(weft, srcB);
+    if (bridges && bridges.length) {                              // 在连接处补上内容（这一步会盖住缝和切边线）
+      for (const b of bridges) {
+        if (b.kind === 'w') drawBridge(Lw.getContext('2d'), b, srcB); else drawBridge(Lv.getContext('2d'), b, srcA);
+      }
+    }
     const lv = Lv.getContext('2d');
     lv.globalCompositeOperation = 'destination-in'; lv.drawImage(mWarp, 0, 0);          // 只留下竖条压在上面的部分
     const lwTop = newCanvas(), lt = lwTop.getContext('2d');
@@ -363,6 +444,9 @@ function syncHW() {
   $('hwPalRow').hidden = $('hwFill').value !== 'palette';
   $('hwPalWrap').hidden = $('hwFill').value !== 'custom';
 }
+$('hwDraft').addEventListener('change', () => {                   // 长条棋盘本来就该是整块的长条
+  if ($('hwDraft').value === 'patBars' && !$('hwJoin').checked) { $('hwJoin').checked = true; queueRender(); pushHistory('Join blocks'); }
+});
 ['hwDraft', 'hwKind', 'hwStyle', 'hwFill', 'hwRandStyle'].forEach(id => $(id).addEventListener('change', () => { syncHW(); syncTile(); }));
 function setMode(m) {
   MODE = m;

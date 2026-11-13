@@ -204,3 +204,10 @@ textarea { width: 100%; font: inherit; padding: 6px; border: 1px solid var(--lin
 #cfPop button { margin: 0; width: auto; padding: 4px 8px; font-size: 12px; white-space: nowrap; }
 #cfPop .cfprev { width: 100%; height: 36px; border: 1px solid #777; margin-bottom: 10px; }
 #cfPop .cfbtns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* 工具栏里的图层选择 */
+.tbsep { height: 1px; background: var(--line); margin: 6px 4px; flex: none; }
+.tbcap { font-size: 10px; color: #6b6a64; text-align: center; margin-bottom: 2px; }
+.ltabs { display: flex; flex-direction: column; gap: 4px; width: 100%; margin: 0; }
+.ltabs label { flex: none; margin: 0; }
+.ltabs span { padding: 7px 0; font-size: 12px; font-weight: 600; }

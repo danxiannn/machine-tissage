@@ -101,12 +101,7 @@
   <details class="grp" id="g-layer" open>
     <summary data-zh="图层与调整">Layer &amp; adjust</summary>
     <div class="gb">
-      <div class="tabs">
-        <label><input type="radio" name="layer" value="A" checked><span>A</span></label>
-        <label><input type="radio" name="layer" value="B"><span>B</span></label>
-        <label><input type="radio" name="layer" value="C"><span data-zh="C 蒙版">C Mask</span></label>
-        <label><input type="radio" name="layer" value="D"><span data-zh="背景">BG</span></label>
-      </div>
+      <p class="small" id="curLayerInfo"></p>
       <label><span data-zh="缩放">Scale</span> <input id="scale" type="range" min="0.2" max="4" step="0.01" value="1"></label>
       <button id="resetPos" type="button" data-zh="重置位置和缩放">Reset position &amp; scale</button>
       <p class="hint" data-zh="拖动画布移动当前图层。选中 C 蒙版时，拖动 / 缩放的是图案本身（预设图案）或 C 图像（抖动）。">Drag the canvas to move the selected layer. With C Mask selected you move / scale the pattern itself (presets) or the C image (dithering).</p>
@@ -225,6 +220,7 @@
           <p class="hint" data-zh="先导入图像 C。每个交叉点对应 C 的一个像素：亮 = 竖条（A）压上，暗 = 横条（B）压上。想要更细的图案，就增加条的数量。选中「C 蒙版」图层可以拖动 / 缩放 C。">Import image C first. Each crossing is one pixel of C: bright = A on top, dark = B on top. Use more strips for finer detail. Select layer C to drag / scale it.</p>
         </div>
       </div>
+      <label class="check"><input id="hwJoin" type="checkbox"> <span data-zh="把相邻的、同一根条压上去的交叉块连成整块（去掉块中间的细线）">Join neighbouring crossings of the same strip into one block (removes the thin lines inside)</span></label>
       <div class="row">
         <label><span data-zh="竖条数量">Vertical strips</span> <input id="hwNW" type="number" min="3" max="60" value="16"></label>
         <label><span data-zh="横条数量">Horizontal strips</span> <input id="hwNH" type="number" min="3" max="60" value="18"></label>
@@ -237,6 +233,35 @@
       </label>
       <button id="hwTidy" type="button" data-zh="✨ 整齐预设（关掉所有随机性）">✨ Tidy preset (turn all randomness off)</button>
       <label class="check"><input id="hwShowMask" type="checkbox"> <span data-zh="只看蒙版（黑 = A 压上，灰 = B）">Show mask only (black = A on top, gray = B)</span></label>
+    </div>
+  </details>
+
+  <!-- ============ 自定义图案编辑器（两个模式共用）============ -->
+  <details class="grp" id="g-tile" hidden open>
+    <summary data-zh="自定义图案">Custom tile</summary>
+    <div class="gb" id="tileBox">
+      <div class="row tilesz">
+        <label><span data-zh="图案宽">Tile W</span> <input id="tileW" type="number" min="2" max="24" value="8"></label>
+        <label><span data-zh="图案高">Tile H</span> <input id="tileH" type="number" min="2" max="24" value="8"></label>
+      </div>
+      <label class="check"><input id="tileRepeat" type="checkbox" checked> <span data-zh="重复铺满画布（取消 = 只出现一个图案）">Repeat across canvas (off = single motif)</span></label>
+      <div class="tabs tools">
+        <label><input type="radio" name="tilemode" value="paint" checked><span data-zh="绘制">Draw</span></label>
+        <label><input type="radio" name="tilemode" value="move"><span data-zh="移动整个图案">Move whole pattern</span></label>
+      </div>
+      <canvas id="tileCv"></canvas>
+      <div class="row">
+        <button id="tileL" type="button" title="Shift left">←</button>
+        <button id="tileU" type="button" title="Shift up">↑</button>
+        <button id="tileD" type="button" title="Shift down">↓</button>
+        <button id="tileR" type="button" title="Shift right">→</button>
+      </div>
+      <label class="check"><input id="tileWrap" type="checkbox" checked> <span data-zh="移动时循环（移出去的格子从另一边回来）">Wrap around when moving</span></label>
+      <div class="row">
+        <button id="tileClear" type="button" data-zh="清空">Clear</button>
+        <button id="tileInv" type="button" data-zh="反相">Invert</button>
+      </div>
+      <p class="hint" data-zh="「绘制」：点击或拖动格子来画。「移动整个图案」：在图案上拖动，或用箭头按钮，整体平移。格子模式里它决定每格显示 A 还是 B；手工编织里它决定每个交叉点谁压在上面。">Draw: click or drag cells. Move whole pattern: drag on the tile, or use the arrow buttons, to shift everything. In grid mode it decides A or B per cell; in hand weave it decides which strip is on top at each crossing.</p>
     </div>
   </details>
 
@@ -377,24 +402,6 @@
     </div>
   </details>
 
-  <!-- ============ 自定义图案编辑器（两个模式共用）============ -->
-  <details class="grp" id="g-tile" hidden open>
-    <summary data-zh="自定义图案">Custom tile</summary>
-    <div class="gb" id="tileBox">
-      <div class="row tilesz">
-        <label><span data-zh="图案宽">Tile W</span> <input id="tileW" type="number" min="2" max="24" value="8"></label>
-        <label><span data-zh="图案高">Tile H</span> <input id="tileH" type="number" min="2" max="24" value="8"></label>
-      </div>
-      <label class="check"><input id="tileRepeat" type="checkbox" checked> <span data-zh="重复铺满画布（取消 = 只出现一个图案）">Repeat across canvas (off = single motif)</span></label>
-      <canvas id="tileCv"></canvas>
-      <div class="row">
-        <button id="tileClear" type="button" data-zh="清空">Clear</button>
-        <button id="tileInv" type="button" data-zh="反相">Invert</button>
-      </div>
-      <p class="hint" data-zh="点击或拖动格子来画。格子模式里它决定每格显示 A 还是 B；手工编织里它决定每个交叉点谁压在上面。">Click or drag cells to draw. In grid mode it decides A or B per cell; in hand weave it decides which strip is on top at each crossing.</p>
-    </div>
-  </details>
-
   <!-- ============ 几何：无 / 变形 / 打乱（格子模式）============ -->
   <details class="grp" id="g-geo" data-modes="grid">
     <summary data-zh="几何（变形 / 打乱）">Geometry (warp / shuffle)</summary>
@@ -479,6 +486,14 @@
     <button type="button" class="tbtn" data-tool="shuffle" data-need="grid-shuffle" hidden title="Shuffle cells / rows / columns"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h4l8 10h4M4 17h4l3-4M13 11l3-4h4M18 5l2 2-2 2M18 15l2 2-2 2"/></svg><span data-zh="打乱">Shuffle</span></button>
     <button type="button" class="tbtn" data-tool="pull" data-need="hand" hidden title="Pull strips"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M9 6l3-3 3 3M9 18l3 3 3-3"/></svg><span data-zh="抽拉">Pull</span></button>
     <button type="button" class="tbtn" data-tool="recolor" data-need="hand" hidden title="Pick strips and recolor them"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 4 6 7 6 10a6 6 0 0 1-12 0c0-3 3-6 6-10z"/></svg><span data-zh="选色">Color</span></button>
+    <div class="tbsep"></div>
+    <div class="tbcap" data-zh="图层">Layer</div>
+    <div class="tabs ltabs">
+      <label><input type="radio" name="layer" value="A" checked><span title="Layer A">A</span></label>
+      <label><input type="radio" name="layer" value="B"><span title="Layer B">B</span></label>
+      <label><input type="radio" name="layer" value="C"><span title="C: pattern / mask">C</span></label>
+      <label><input type="radio" name="layer" value="D"><span title="Background" data-zh="背景">BG</span></label>
+    </div>
   </div>
   <div class="stage">
     <div id="toolOpts" hidden>

@@ -8,7 +8,7 @@ function mulberry32(a) {
 const cv = $('cv'), ctx = cv.getContext('2d');
 const mod = (n, m) => ((n % m) + m) % m;
 const T = 2 * Math.PI;
-const BUILD = 'build 11-07-g';
+const BUILD = 'build 11-07-i';
 $('ver').textContent = BUILD;
 $('ui').reset();   // 浏览器刷新 / Live Server 重载时会“记住”上次的选项，这里强制回到默认值，保证界面和程序状态一致
 window.addEventListener('error', e => {   // 出错时在左上角显示红色提示，不用开控制台
@@ -482,8 +482,15 @@ function updateStatus() {
   }
   $('regStatus').textContent = t;
 }
+function updateLayerInfo() {
+  const el = $('curLayerInfo');
+  if (!el) return;
+  const zh = typeof lang !== 'undefined' && lang === 'zh', names = { A: 'A', B: 'B', C: zh ? 'C（图案 / 蒙版）' : 'C (pattern / mask)', D: zh ? '背景' : 'Background' };
+  el.textContent = (zh ? '当前图层：' : 'Selected layer: ') + names[cur] + (zh ? '（在画布左边的工具栏里切换）' : ' (switch it in the toolbar left of the canvas)');
+}
 function render() {
   updateStatus();
+  updateLayerInfo();
   if (typeof syncNums === 'function') syncNums();
   if (typeof syncColorFields === 'function') syncColorFields();
   const W = CW(), H = CH();
@@ -554,7 +561,7 @@ document.querySelectorAll('aside input, aside select').forEach(el => {
   el.addEventListener('input', queueRender);
 });
 document.querySelectorAll('input[name=layer]').forEach(r => r.addEventListener('change', () => {
-  cur = r.value; $('scale').value = layers[cur].scale;
+  cur = r.value; $('scale').value = layers[cur].scale; updateLayerInfo();
 }));
 function setTool(t) {
   tool = t; poly = []; polyHover = null; drag = null;
@@ -843,24 +850,55 @@ function resizeTile() {
   tile = Array.from({ length: th }, (_, y) => Array.from({ length: tw }, (_, x) => (tile[y] && tile[y][x]) || 0));
   drawTile(); queueRender();
 }
-let tileVal = null;
+let tileVal = null, tileMove = null;
+const tileMode = () => document.querySelector('input[name=tilemode]:checked').value;
 const tileCell = e => {
   const r = tc.getBoundingClientRect(), tw = tile[0].length, th = tile.length;
   return [Math.min(tw - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * tw))),
           Math.min(th - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * th)))];
 };
+// 整体平移图案：wrap = 移出去的格子从另一边回来
+function shiftTile(src, dx, dy, wrap) {
+  const th = src.length, tw = src[0].length;
+  return Array.from({ length: th }, (_, y) => Array.from({ length: tw }, (_, x) => {
+    let sx = x - dx, sy = y - dy;
+    if (wrap) { sx = ((sx % tw) + tw) % tw; sy = ((sy % th) + th) % th; }
+    else if (sx < 0 || sx >= tw || sy < 0 || sy >= th) return 0;
+    return src[sy][sx];
+  }));
+}
+function nudgeTile(dx, dy) { tile = shiftTile(tile, dx, dy, $('tileWrap').checked); drawTile(); queueRender(); pushHistory('Move tile'); }
 tc.addEventListener('pointerdown', e => {
   tc.setPointerCapture(e.pointerId);
+  if (tileMode() === 'move') {
+    const r = tc.getBoundingClientRect();
+    tileMove = { x: e.clientX, y: e.clientY, orig: tile.map(row => row.slice()), cw: r.width / tile[0].length, ch: r.height / tile.length, moved: false };
+    return;
+  }
   const [x, y] = tileCell(e);
   tileVal = tile[y][x] ? 0 : 1; tile[y][x] = tileVal;
   drawTile(); queueRender();
 });
 tc.addEventListener('pointermove', e => {
+  if (tileMove) {                                                // 移动模式：拖动多少格，图案就平移多少格
+    const dx = Math.round((e.clientX - tileMove.x) / tileMove.cw), dy = Math.round((e.clientY - tileMove.y) / tileMove.ch);
+    tile = shiftTile(tileMove.orig, dx, dy, $('tileWrap').checked); tileMove.moved = dx !== 0 || dy !== 0;
+    drawTile(); queueRender();
+    return;
+  }
   if (tileVal === null) return;
   const [x, y] = tileCell(e);
   if (tile[y][x] !== tileVal) { tile[y][x] = tileVal; drawTile(); queueRender(); }
 });
-['pointerup', 'pointercancel'].forEach(t => tc.addEventListener(t, () => { if (tileVal !== null) pushHistory('Edit tile'); tileVal = null; }));
+['pointerup', 'pointercancel'].forEach(t => tc.addEventListener(t, () => {
+  if (tileMove) { if (tileMove.moved) pushHistory('Move tile'); tileMove = null; return; }
+  if (tileVal !== null) pushHistory('Edit tile');
+  tileVal = null;
+}));
+$('tileL').addEventListener('click', () => nudgeTile(-1, 0));
+$('tileR').addEventListener('click', () => nudgeTile(1, 0));
+$('tileU').addEventListener('click', () => nudgeTile(0, -1));
+$('tileD').addEventListener('click', () => nudgeTile(0, 1));
 $('tileW').addEventListener('change', resizeTile);
 $('tileH').addEventListener('change', resizeTile);
 $('tileClear').addEventListener('click', () => { tile = tile.map(r => r.map(() => 0)); drawTile(); queueRender(); pushHistory('Clear tile'); });

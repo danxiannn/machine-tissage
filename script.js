@@ -8,7 +8,7 @@ function mulberry32(a) {
 const cv = $('cv'), ctx = cv.getContext('2d');
 const mod = (n, m) => ((n % m) + m) % m;
 const T = 2 * Math.PI;
-const BUILD = 'build 11-07-e';
+const BUILD = 'build 11-07-f';
 $('ver').textContent = BUILD;
 $('ui').reset();   // 浏览器刷新 / Live Server 重载时会“记住”上次的选项，这里强制回到默认值，保证界面和程序状态一致
 window.addEventListener('error', e => {   // 出错时在左上角显示红色提示，不用开控制台

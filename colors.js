@@ -178,7 +178,7 @@ function drawSelOutline(k) {
 // ---------- 整齐预设：把所有随机性关掉 ----------
 $('hwTidy').addEventListener('click', () => {
   const set = (id, v) => { $(id).value = v; };
-  set('hwVar', 0); set('hwWob', 0); set('hwTilt', 0); set('hwRag', 0); set('hsP', 0); set('hsSwap', 0); set('hwGap', 1);
+  set('hwVar', 0); set('hwWob', 0); set('hwTilt', 0); set('hwGapIrr', 0); set('hwRag', 0); set('hsP', 0); set('hsSwap', 0); set('hwGap', 1);
   set('hwExtVRand', 0); set('hwExtHRand', 0); set('hwTone', 0);
   queueRender(); pushHistory('Tidy preset');
 });

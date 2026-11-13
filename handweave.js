@@ -14,7 +14,7 @@ function readHW() {
     slit: document.querySelector('input[name=slit]:checked').value, slitW: v('hwSlitW'), slitDir: $('hwSlitDir').value,
     outside: $('outside').value,
     fill: $('hwFill').value, palK: Math.round(v('hwPalK')), palText: $('hwPalText').value,
-    gTilt: v('hwGTilt'), gWave: v('hwGWave'), gWaveLen: Math.max(50, v('hwGWaveLen')), ragV: $('hwRagV').value, ragH: $('hwRagH').value,
+    gTilt: v('hwGTilt'), gWave: v('hwGWave'), gWaveLen: Math.max(50, v('hwGWaveLen')), ragV: $('hwRagV').value, ragH: $('hwRagH').value, gapIrr: v('hwGapIrr'),
     extV: { side: $('hwExtVSide').value, len: v('hwExtVLen') / 100 * (+$('H').value), rand: v('hwExtVRand') },   // 延伸长度 = 主体高度的 %
     extH: { side: $('hwExtHSide').value, len: v('hwExtHLen') / 100 * (+$('W').value), rand: v('hwExtHRand') },   // 延伸长度 = 主体宽度的 %
     rect: handRect(),
@@ -25,10 +25,11 @@ function readHW() {
 
 // 生成一组条：vertical = true 为竖条（沿 y 方向），否则为横条（沿 x 方向）
 // 歪斜 / 弯曲分两层：
-//   整体（gTilt、gWave）：所有条一起转、一起弯，彼此保持平行，不会碰到；
-//   每根条各自（tilt、wob）：各歪各的，最后用“防穿插”检查把相邻的条推开，保证永远不会互相穿过。
+//   整体（gTilt、gWave）：所有条一起转、一起弯，彼此保持平行；
+//   手剪感（wob、tilt、gapIrr）：晃动的是“条与条之间的边缘线”，相邻的两根条共用这条线，所以永远不会互相穿过，
+//   只是宽度会有一点楔形变化（像手剪的纸条）；再加上“缝隙不均”，让缝时宽时窄。
 function makeStrips(n, vertical, seed, P, W, H, pulls) {
-  const R = mulberry32(seed), RS = mulberry32(P.hsSeed * 977 + (vertical ? 1 : 2)), RE = mulberry32(seed + 555);
+  const R = mulberry32(seed), RS = mulberry32(P.hsSeed * 977 + (vertical ? 1 : 2)), RE = mulberry32(seed + 555), RB = mulberry32(seed + 777);
   const R0 = P.rect, m = R0.m;                      // 编织区域（在实际画布里的位置）
   const u0 = vertical ? R0.x0 : R0.y0, u1 = vertical ? R0.x1 : R0.y1;      // 横跨方向的范围
   const v0 = vertical ? R0.y0 : R0.x0, v1 = vertical ? R0.y1 : R0.x1;      // 沿条方向的编织范围
@@ -36,12 +37,26 @@ function makeStrips(n, vertical, seed, P, W, H, pulls) {
   const sum = ws.reduce((a, b) => a + b, 0), avail = Math.max(1, (u1 - u0) - P.gap * (n - 1));
   const K = 32, vm = (v0 + v1) / 2;
   const gTilt = Math.tan(P.gTilt * Math.PI / 180) * (vertical ? -1 : 1);     // 整块布旋转：竖条和横条朝同一个转动方向歪
+  // 各根条的名义宽度和位置
+  const wid = [], left0 = [];
   let u = u0;
+  for (let i = 0; i < n; i++) { const w = avail * ws[i] / sum; wid.push(w); left0.push(u); u += w + P.gap; }
+  // 每条“边缘线”（n + 1 条，包括最外面两条）各自的晃动参数
+  const edges = [];
+  for (let j = 0; j <= n; j++) {
+    const wl = j > 0 ? wid[j - 1] : Infinity, wr = j < n ? wid[j] : Infinity, mw = Math.min(wl, wr, 1e9);
+    edges.push({ lam: 250 + RB() * 300, ph: RB() * T, tilt: Math.tan((RB() - 0.5) * 2 * P.tilt * Math.PI / 180), wob: P.wob * (0.4 + RB() * 0.6),
+                 lamG: 200 + RB() * 300, phG: RB() * T, ampG: 0.3 + RB() * 0.7, mw,
+                 cm: 0.3 * mw, gMax: Math.min(P.gapIrr, 0.2 * mw) });
+  }
+  const off = (j, v) => {                                          // 第 j 条边缘线在 v 处的横向偏移（用 tanh 平滑地限制幅度，不会出现生硬的折角）
+    const e = edges[j], raw = e.wob * Math.sin(T * v / e.lam + e.ph) + e.tilt * (v - vm);
+    return e.cm * Math.tanh(raw / Math.max(1e-6, e.cm));
+  };
+  const gapIrr = (j, v) => (j <= 0 || j >= n) ? 0 : edges[j].gMax * edges[j].ampG * (0.5 + 0.5 * Math.sin(T * v / edges[j].lamG + edges[j].phG));
   const S = [];
   for (let i = 0; i < n; i++) {
-    const w = avail * ws[i] / sum, uc = u + w / 2;
-    u += w + P.gap;
-    const pull = pulls[i] || 0, pitch = avail / n;              // 被抽拉出去 / 缩回的距离
+    const w = wid[i], pull = pulls[i] || 0, pitch = avail / n;      // 被抽拉出去 / 缩回的距离
     // 条头参差：可以选哪一端（默认两端）
     const rr1 = R(), rr2 = R();
     const E = vertical ? P.extV : P.extH, rs = vertical ? P.ragV : P.ragH, side = rs === 'ext' ? E.side : rs;
@@ -52,13 +67,13 @@ function makeStrips(n, vertical, seed, P, W, H, pulls) {
     const x1 = (E.side === 'start' || E.side === 'both') ? E.len * (1 - E.rand * e1) : 0;
     const x2 = (E.side === 'end' || E.side === 'both') ? E.len * (1 - E.rand * e2) : 0;
     const vs = v0 - t1 - x1, ve = v1 + t2 + x2;
-    const lam = 250 + R() * 300, ph = R() * T;
-    const tilt = Math.tan((R() - 0.5) * 2 * P.tilt * Math.PI / 180), wob = P.wob * (0.4 + R() * 0.6);
+    R(); R(); R(); R();                                             // （保持随机数的顺序不变，让条头、明暗和以前的种子一致）
     const left = [], right = [];
     for (let k = 0; k <= K; k++) {
       const v = vs + (ve - vs) * k / K;
-      const d = wob * Math.sin(T * v / lam + ph) + (tilt + gTilt) * (v - vm) + P.gWave * Math.sin(T * v / P.gWaveLen);
-      left.push([uc - w / 2 + d, v + pull]); right.push([uc + w / 2 + d, v + pull]);
+      const common = gTilt * (v - vm) + P.gWave * Math.sin(T * v / P.gWaveLen);                // 整体：所有条一样
+      left.push([left0[i] + off(i, v) + gapIrr(i, v) / 2 + common, v + pull]);
+      right.push([left0[i] + w + off(i + 1, v) - gapIrr(i + 1, v) / 2 + common, v + pull]);
     }
     // 内容打乱：沿着条滑动一段，或者换成旁边某根条的图像
     const r1 = RS(), r2 = RS(), r3 = RS(), r4 = RS();
@@ -66,23 +81,6 @@ function makeStrips(n, vertical, seed, P, W, H, pulls) {
     if (r1 < P.hsP) along += (r2 * 2 - 1) * P.hsAmt;
     if (r3 < P.hsSwap) across = (Math.floor(r4 * 7) - 3) * pitch;
     S.push({ left, right, tone: (R() - 0.5) * 2 * P.tone, idx: i, vertical, off: vertical ? [across, along] : [along, across] });
-  }
-
-  // 防穿插：从左到右（从上到下）逐根检查，如果这一根的左边缘进入了前一根的右边缘，就把它整段推开，留出至少一个缝隙
-  const minGap = Math.max(0, P.gap);
-  const edgeAt = (pts, v) => {                                  // pts 按 v 从小到大排列；返回这条边在 v 处的横向位置
-    if (v < pts[0][1] || v > pts[pts.length - 1][1]) return null;
-    for (let k = 1; k < pts.length; k++) if (pts[k][1] >= v) { const a = pts[k - 1], b = pts[k]; return a[0] + (b[0] - a[0]) * (v - a[1]) / Math.max(1e-6, b[1] - a[1]); }
-    return pts[pts.length - 1][0];
-  };
-  for (let i = 1; i < n; i++) {
-    const A = S[i - 1], B = S[i];
-    for (let k = 0; k < B.left.length; k++) {
-      const ur = edgeAt(A.right, B.left[k][1]);
-      if (ur === null) continue;
-      const need = ur + minGap - B.left[k][0];
-      if (need > 0) { B.left[k][0] += need; B.right[k][0] += need; }
-    }
   }
   return S.map(st => ({ pts: st.left.concat(st.right.slice().reverse()).map(([a, b]) => vertical ? [a, b] : [b, a]),
                         tone: st.tone, idx: st.idx, vertical: st.vertical, off: st.off }));

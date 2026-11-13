@@ -252,10 +252,16 @@
       <label><span data-zh="整体波浪幅度 (px)">Overall wave amplitude (px)</span> <input id="hwGWave" type="range" min="0" max="120" step="0.5" value="0"></label>
       <label><span data-zh="整体波浪波长 (px)">Overall wavelength (px)</span> <input id="hwGWaveLen" type="range" min="100" max="3000" step="10" value="700"></label>
 
-      <div class="subhead"><span data-zh="手剪感的随机（晃动的是条与条之间的边缘线，相邻的条不会穿过）">Hand-cut randomness (the edges between strips wobble; neighbours never cross)</span></div>
-      <label><span data-zh="边缘弯曲抖动 (px)">Edge wobble (px)</span> <input id="hwWob" type="range" min="0" max="40" step="0.5" value="4"></label>
-      <label><span data-zh="边缘歪斜 (°)">Edge tilt (°)</span> <input id="hwTilt" type="range" min="0" max="12" step="0.1" value="0.7"></label>
-      <label><span data-zh="缝隙不均 (px)（让缝时宽时窄）">Gap irregularity (px)</span> <input id="hwGapIrr" type="range" min="0" max="30" step="0.5" value="0"></label>
+      <div class="subhead"><span data-zh="每根条的随机（手工感）">Per-strip randomness (hand-made feel)</span></div>
+      <label><span data-zh="随机的风格">Randomness style</span>
+        <select id="hwRandStyle">
+          <option value="loose" data-zh="松散（每根条各走各的，相邻的条可能互相碰到 / 穿过）" selected>Loose (each strip drifts on its own; neighbours may touch or cross)</option>
+          <option value="cut" data-zh="手剪（边缘线晃动，相邻的条永远不会穿过）">Hand-cut (shared edges wobble; neighbours never cross)</option>
+        </select>
+      </label>
+      <label><span data-zh="弯曲抖动 (px)">Wobble (px)</span> <input id="hwWob" type="range" min="0" max="40" step="0.5" value="4"></label>
+      <label><span data-zh="歪斜 (°)">Tilt (°)</span> <input id="hwTilt" type="range" min="0" max="12" step="0.1" value="0.7"></label>
+      <label id="hwGapIrrRow" hidden><span data-zh="缝隙不均 (px)（让缝时宽时窄，仅「手剪」风格）">Gap irregularity (px)</span> <input id="hwGapIrr" type="range" min="0" max="30" step="0.5" value="0"></label>
       <label><span data-zh="条头参差程度（全局）">Ragged ends amount (global)</span> <input id="hwRag" type="range" min="0" max="1" step="0.01" value="0.85"></label>
       <label><span data-zh="竖条：哪一端参差">Vertical strips: ragged at</span>
         <select id="hwRagV"><option value="none" data-zh="不参差">None</option><option value="start" data-zh="上端">Top</option><option value="end" data-zh="下端">Bottom</option><option value="both" data-zh="两端（默认）" selected>Both ends (default)</option><option value="ext" data-zh="和延伸同一端">Same end as the overhang</option></select>

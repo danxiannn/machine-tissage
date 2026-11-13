@@ -14,7 +14,7 @@ function readHW() {
     slit: document.querySelector('input[name=slit]:checked').value, slitW: v('hwSlitW'), slitDir: $('hwSlitDir').value,
     outside: $('outside').value,
     fill: $('hwFill').value, palK: Math.round(v('hwPalK')), palText: $('hwPalText').value,
-    gTilt: v('hwGTilt'), gWave: v('hwGWave'), gWaveLen: Math.max(50, v('hwGWaveLen')), ragV: $('hwRagV').value, ragH: $('hwRagH').value, gapIrr: v('hwGapIrr'),
+    gTilt: v('hwGTilt'), gWave: v('hwGWave'), gWaveLen: Math.max(50, v('hwGWaveLen')), ragV: $('hwRagV').value, ragH: $('hwRagH').value, gapIrr: v('hwGapIrr'), randStyle: $('hwRandStyle').value,
     extV: { side: $('hwExtVSide').value, len: v('hwExtVLen') / 100 * (+$('H').value), rand: v('hwExtVRand') },   // 延伸长度 = 主体高度的 %
     extH: { side: $('hwExtHSide').value, len: v('hwExtHLen') / 100 * (+$('W').value), rand: v('hwExtHRand') },   // 延伸长度 = 主体宽度的 %
     rect: handRect(),
@@ -24,6 +24,9 @@ function readHW() {
 }
 
 // 生成一组条：vertical = true 为竖条（沿 y 方向），否则为横条（沿 x 方向）
+// 随机有两种风格（randStyle）：
+//   loose（默认，和最早的版本一样）：每根条各走各的，条与条之间有缝但相邻的条可能互相碰到、穿过；
+//   cut：晃动的是边缘线，相邻的条共用边缘线，永远不会穿过（见下面）。
 // 歪斜 / 弯曲分两层：
 //   整体（gTilt、gWave）：所有条一起转、一起弯，彼此保持平行；
 //   手剪感（wob、tilt、gapIrr）：晃动的是“条与条之间的边缘线”，相邻的两根条共用这条线，所以永远不会互相穿过，
@@ -67,13 +70,21 @@ function makeStrips(n, vertical, seed, P, W, H, pulls) {
     const x1 = (E.side === 'start' || E.side === 'both') ? E.len * (1 - E.rand * e1) : 0;
     const x2 = (E.side === 'end' || E.side === 'both') ? E.len * (1 - E.rand * e2) : 0;
     const vs = v0 - t1 - x1, ve = v1 + t2 + x2;
-    R(); R(); R(); R();                                             // （保持随机数的顺序不变，让条头、明暗和以前的种子一致）
+    // 旧的做法（loose）用到的随机数；顺序和最早的版本一样
+    const lam = 250 + R() * 300, ph = R() * T;
+    const ownTilt = Math.tan((R() - 0.5) * 2 * P.tilt * Math.PI / 180), ownWob = P.wob * (0.4 + R() * 0.6);
+    const loose = P.randStyle !== 'cut';
     const left = [], right = [];
     for (let k = 0; k <= K; k++) {
       const v = vs + (ve - vs) * k / K;
       const common = gTilt * (v - vm) + P.gWave * Math.sin(T * v / P.gWaveLen);                // 整体：所有条一样
-      left.push([left0[i] + off(i, v) + gapIrr(i, v) / 2 + common, v + pull]);
-      right.push([left0[i] + w + off(i + 1, v) - gapIrr(i + 1, v) / 2 + common, v + pull]);
+      if (loose) {                                                                              // 每根条各走各的
+        const d = ownWob * Math.sin(T * v / lam + ph) + ownTilt * (v - vm) + common;
+        left.push([left0[i] + d, v + pull]); right.push([left0[i] + w + d, v + pull]);
+      } else {                                                                                  // 共用边缘线
+        left.push([left0[i] + off(i, v) + gapIrr(i, v) / 2 + common, v + pull]);
+        right.push([left0[i] + w + off(i + 1, v) - gapIrr(i + 1, v) / 2 + common, v + pull]);
+      }
     }
     // 内容打乱：沿着条滑动一段，或者换成旁边某根条的图像
     const r1 = RS(), r2 = RS(), r3 = RS(), r4 = RS();
@@ -347,11 +358,12 @@ function syncHW() {
   $('hwStripBox').hidden = weave;
   $('hwCBox').hidden = !(weave && $('hwDraft').value === 'imageC');
   $('hwRealBox').hidden = $('hwStyle').value !== 'real';       // 投影、颗粒、明暗差异只有“拟真”风格才用得上
+  $('hwGapIrrRow').hidden = $('hwRandStyle').value !== 'cut';       // 缝隙不均只对“手剪”风格有效
   $('hwColorBox').hidden = $('hwFill').value === 'image';      // 纯色条的颜色设置
   $('hwPalRow').hidden = $('hwFill').value !== 'palette';
   $('hwPalWrap').hidden = $('hwFill').value !== 'custom';
 }
-['hwDraft', 'hwKind', 'hwStyle', 'hwFill'].forEach(id => $(id).addEventListener('change', () => { syncHW(); syncTile(); }));
+['hwDraft', 'hwKind', 'hwStyle', 'hwFill', 'hwRandStyle'].forEach(id => $(id).addEventListener('change', () => { syncHW(); syncTile(); }));
 function setMode(m) {
   MODE = m;
   const r = document.querySelector(`input[name=mode][value=${m}]`);
